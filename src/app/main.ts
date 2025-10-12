@@ -24,7 +24,7 @@ async function bootstrap() {
 
   const me = await bot.api.getMe();
   logger.info("Бот авторизован", { username: me.username });
-  bot.start();
+  await bot.start();
 }
 
 bootstrap().catch((error) => {

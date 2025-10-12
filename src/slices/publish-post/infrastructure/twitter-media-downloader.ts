@@ -9,7 +9,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import { env } from "../../../shared/config/env";
 import { logger } from "../../../shared/logging/logger";
 import { TempFileManager } from "../../../shared/storage/temp-file-manager";
-import { DownloadedMedia, MediaType } from "../domain/models";
+import { DownloadedMedia } from "../domain/models";
 import { InvalidTweetUrlError, MediaDownloadError } from "../domain/errors";
 
 const tweetIdRegex = /(?:twitter|x)\.com\/[^/]+\/status\/(\d+)/i;
@@ -20,8 +20,8 @@ const mediaFields: Partial<Tweetv2FieldsParams> = {
 };
 
 export class TwitterMediaDownloader {
-  private readonly client: TwitterApi;
-  private readonly proxyAgent = new HttpsProxyAgent(env.twitterProxyUrl);
+  readonly client: TwitterApi;
+  readonly proxyAgent = new HttpsProxyAgent(env.twitterProxyUrl);
 
   constructor(private readonly tempFiles: TempFileManager) {
     this.client = new TwitterApi(
@@ -45,6 +45,18 @@ export class TwitterMediaDownloader {
     try {
       result = await this.client.v2.singleTweet(tweetId, mediaFields);
     } catch (error) {
+      const rateLimit = this.extractRateLimitInfo(error);
+      if (rateLimit) {
+        const waitMs = this.calculateWaitTime(rateLimit.resetAt);
+        logger.error("Превышен лимит запросов Twitter/X", { error, rateLimit, waitMs });
+        const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
+        throw new MediaDownloadError(
+          waitMs > 0
+            ? `Превышен лимит запросов Twitter/X. Повторите через ${waitSeconds} секунд.`
+            : "Превышен лимит запросов Twitter/X. Повторите позже."
+        );
+      }
+
       logger.error("Не удалось получить данные твита", { error });
       throw new MediaDownloadError("Не удалось получить данные твита из Twitter/X");
     }
@@ -138,5 +150,39 @@ export class TwitterMediaDownloader {
       default:
         return ".bin";
     }
+  }
+
+  private extractRateLimitInfo(error: unknown): { limit?: number; remaining?: number; resetAt?: number } | null {
+    if (!error || typeof error !== "object") {
+      return null;
+    }
+
+    const data = error as Record<string, any>;
+    const status = data.code ?? data.status ?? data.error?.status;
+    if (status !== 429) {
+      return null;
+    }
+
+    const rateLimit = data.rateLimit ?? data.error?.rateLimit ?? data.data?.rateLimit;
+    if (!rateLimit) {
+      return null;
+    }
+
+    const reset = typeof rateLimit.reset === "number" ? rateLimit.reset : Number(rateLimit.reset);
+    const resetAt = Number.isFinite(reset) ? reset * 1000 : undefined;
+
+    return {
+      limit: typeof rateLimit.limit === "number" ? rateLimit.limit : undefined,
+      remaining: typeof rateLimit.remaining === "number" ? rateLimit.remaining : undefined,
+      resetAt
+    };
+  }
+
+  private calculateWaitTime(resetAt?: number) {
+    if (!resetAt) {
+      return 0;
+    }
+    const now = Date.now();
+    return resetAt > now ? resetAt - now : 0;
   }
 }

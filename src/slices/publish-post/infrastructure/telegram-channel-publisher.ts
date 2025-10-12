@@ -50,8 +50,8 @@ export class TelegramChannelPublisher {
 
   private composeCaption(userText: string, tweetUrl: string) {
     const trimmedText = userText.trim();
-    const prefix = trimmedText.length > 0 ? `${trimmedText}\n\n` : "";
-    return `${prefix}Источник Twitter/X: ${tweetUrl}`;
+    const suffix = `[src (${tweetUrl})]`;
+    return trimmedText.length > 0 ? `${trimmedText}\n\n${suffix}` : suffix;
   }
 
   private chunk<T>(input: T[], size: number): T[][] {
