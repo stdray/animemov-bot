@@ -2,7 +2,7 @@ import { createWriteStream, unlink } from "fs";
 import { promisify } from "util";
 import path from "path";
 import crypto from "crypto";
-import { env } from "../../shared/config/env";
+import { env } from "../config/env";
 
 const unlinkAsync = promisify(unlink);
 
