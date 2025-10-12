@@ -1,0 +1,21 @@
+{
+  "name": "amimemov-bot",
+  "version": "0.1.0",
+  "description": "Telegram бот для пересылки медиа из Twitter/X",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/app/main.ts",
+    "build": "bun build src/app/main.ts --outdir dist",
+    "start": "bun run src/app/main.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "grammy": "^1.23.0",
+    "https-proxy-agent": "^7.0.4",
+    "twitter-api-v2": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.3.3"
+  }
+}
