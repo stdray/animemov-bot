@@ -9,3 +9,9 @@ export class MediaDownloadError extends Error {
     super(message);
   }
 }
+
+export class TwitterRateLimitError extends MediaDownloadError {
+  constructor(public readonly retryAt: number, message: string) {
+    super(message);
+  }
+}

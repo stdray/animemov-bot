@@ -10,7 +10,7 @@ import { env } from "../../../shared/config/env";
 import { logger } from "../../../shared/logging/logger";
 import { TempFileManager } from "../../../shared/storage/temp-file-manager";
 import { DownloadedMedia } from "../domain/models";
-import { InvalidTweetUrlError, MediaDownloadError } from "../domain/errors";
+import { InvalidTweetUrlError, MediaDownloadError, TwitterRateLimitError } from "../domain/errors";
 
 const tweetIdRegex = /(?:twitter|x)\.com\/[^/]+\/status\/(\d+)/i;
 
@@ -22,8 +22,10 @@ const mediaFields: Partial<Tweetv2FieldsParams> = {
 export class TwitterMediaDownloader {
   readonly client: TwitterApi;
   readonly proxyAgent = new HttpsProxyAgent(env.twitterProxyUrl);
+  readonly tempFiles: TempFileManager;
 
-  constructor(private readonly tempFiles: TempFileManager) {
+  constructor(tempFiles: TempFileManager) {
+    this.tempFiles = tempFiles;
     this.client = new TwitterApi(
       {
         appKey: env.twitterCredentials.consumerKey,
@@ -47,14 +49,16 @@ export class TwitterMediaDownloader {
     } catch (error) {
       const rateLimit = this.extractRateLimitInfo(error);
       if (rateLimit) {
-        const waitMs = this.calculateWaitTime(rateLimit.resetAt);
-        logger.error("Превышен лимит запросов Twitter/X", { error, rateLimit, waitMs });
+        const baseResetAt = rateLimit.resetAt ?? Date.now();
+        const retryAt = baseResetAt + 3000;
+        const waitMs = Math.max(0, retryAt - Date.now());
+        logger.error("Превышен лимит запросов Twitter/X", { error, rateLimit, waitMs, retryAt });
         const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
-        throw new MediaDownloadError(
+        const message =
           waitMs > 0
             ? `Превышен лимит запросов Twitter/X. Повторите через ${waitSeconds} секунд.`
-            : "Превышен лимит запросов Twitter/X. Повторите позже."
-        );
+            : "Превышен лимит запросов Twitter/X. Повторите позже.";
+        throw new TwitterRateLimitError(retryAt, message);
       }
 
       logger.error("Не удалось получить данные твита", { error });
@@ -95,7 +99,7 @@ export class TwitterMediaDownloader {
     return downloads;
   }
 
-  private extractTweetId(tweetUrl: string): string {
+  extractTweetId(tweetUrl: string): string {
     const match = tweetIdRegex.exec(tweetUrl);
     if (!match) {
       throw new InvalidTweetUrlError();
@@ -103,7 +107,7 @@ export class TwitterMediaDownloader {
     return match[1];
   }
 
-  private collectMedia(tweet: TweetV2, includes?: ApiV2Includes): MediaObjectV2[] {
+  collectMedia(tweet: TweetV2, includes?: ApiV2Includes): MediaObjectV2[] {
     if (!tweet.attachments?.media_keys || !includes?.media) {
       return [];
     }
@@ -118,7 +122,7 @@ export class TwitterMediaDownloader {
       .filter((item): item is MediaObjectV2 => Boolean(item));
   }
 
-  private getMediaUrl(media: MediaObjectV2): string {
+  getMediaUrl(media: MediaObjectV2): string {
     if (media.type === "photo" && media.url) {
       return media.url;
     }
@@ -140,7 +144,7 @@ export class TwitterMediaDownloader {
     throw new MediaDownloadError(`Неизвестный тип медиа ${media.type}`);
   }
 
-  private resolveExtension(type: MediaObjectV2["type"]) {
+  resolveExtension(type: MediaObjectV2["type"]) {
     switch (type) {
       case "photo":
         return ".jpg";
@@ -152,7 +156,7 @@ export class TwitterMediaDownloader {
     }
   }
 
-  private extractRateLimitInfo(error: unknown): { limit?: number; remaining?: number; resetAt?: number } | null {
+  extractRateLimitInfo(error: unknown): { limit?: number; remaining?: number; resetAt?: number } | null {
     if (!error || typeof error !== "object") {
       return null;
     }
@@ -178,11 +182,4 @@ export class TwitterMediaDownloader {
     };
   }
 
-  private calculateWaitTime(resetAt?: number) {
-    if (!resetAt) {
-      return 0;
-    }
-    const now = Date.now();
-    return resetAt > now ? resetAt - now : 0;
-  }
 }
