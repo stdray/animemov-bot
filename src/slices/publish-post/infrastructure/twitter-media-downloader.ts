@@ -6,6 +6,9 @@ import TwitterApi, {
   Tweetv2FieldsParams
 } from "twitter-api-v2";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { URL } from "node:url";
 import { env } from "../../../shared/config/env";
 import { logger } from "../../../shared/logging/logger";
 import { TempFileManager } from "../../../shared/storage/temp-file-manager";
@@ -34,7 +37,7 @@ export class TwitterMediaDownloader {
         accessSecret: env.twitterCredentials.accessSecret
       },
       {
-        httpAgent: this.proxyAgent as any
+        httpAgent: this.proxyAgent
       }
     );
   }
@@ -77,11 +80,7 @@ export class TwitterMediaDownloader {
       const filePath = this.tempFiles.createPath(extension);
 
       try {
-        const response = await fetch(url, { agent: this.proxyAgent } as any);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
+        const arrayBuffer = await this.downloadViaProxy(url);
         await this.tempFiles.saveBuffer(filePath, arrayBuffer);
       } catch (error) {
         logger.error("Ошибка при загрузке медиа", { url, error });
@@ -180,6 +179,55 @@ export class TwitterMediaDownloader {
       remaining: typeof rateLimit.remaining === "number" ? rateLimit.remaining : undefined,
       resetAt
     };
+  }
+
+  async downloadViaProxy(url: string, redirectsLeft = 5): Promise<ArrayBuffer> {
+    const targetUrl = new URL(url);
+    const requestFn = targetUrl.protocol === "http:" ? httpRequest : httpsRequest;
+
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const request = requestFn(
+        targetUrl,
+        {
+          agent: this.proxyAgent,
+          headers: {
+            "User-Agent": "amimemov-bot/1.0 (+https://github.com/stdray/amimemov-bot)"
+          }
+        },
+        (response) => {
+          const statusCode = response.statusCode ?? 0;
+          if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
+            response.resume();
+            if (redirectsLeft <= 0) {
+              reject(new Error("Too many redirects"));
+              return;
+            }
+            const nextUrl = new URL(response.headers.location, targetUrl).toString();
+            this.downloadViaProxy(nextUrl, redirectsLeft - 1).then(resolve).catch(reject);
+            return;
+          }
+
+          if (statusCode < 200 || statusCode >= 300) {
+            response.resume();
+            reject(new Error(`HTTP ${statusCode}`));
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+          response.on("end", () => {
+            const buffer = Buffer.concat(chunks);
+            const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+            resolve(arrayBuffer);
+          });
+        }
+      );
+
+      request.on("error", reject);
+      request.end();
+    });
   }
 
 }

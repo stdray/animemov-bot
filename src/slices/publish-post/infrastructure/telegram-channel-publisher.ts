@@ -16,7 +16,7 @@ export class TelegramChannelPublisher {
   async publish(media: DownloadedMedia[], userText: string, tweetUrl: string) {
     if (media.length === 0) {
       await this.api.sendMessage(env.telegramTargetChannelId, this.composeCaption(userText, tweetUrl), {
-        parse_mode: "HTML"
+        parse_mode: "MarkdownV2"
       });
       return;
     }
@@ -31,7 +31,7 @@ export class TelegramChannelPublisher {
         album[0] = {
           ...album[0],
           caption,
-          parse_mode: "HTML"
+          parse_mode: "MarkdownV2"
         } as InputMediaPhoto | InputMediaVideo;
         captionSent = true;
       }
@@ -41,7 +41,7 @@ export class TelegramChannelPublisher {
 
     if (!captionSent) {
       await this.api.sendMessage(env.telegramTargetChannelId, this.composeCaption(userText, tweetUrl), {
-        parse_mode: "HTML"
+        parse_mode: "MarkdownV2"
       });
     }
   }
@@ -63,13 +63,13 @@ export class TelegramChannelPublisher {
 
   composeCaption(userText: string, tweetUrl: string) {
     const trimmedText = userText.trim();
-    const escapedUrl = this.escapeHtml(tweetUrl);
-    const link = `<a href="${escapedUrl}">src</a>`;
+    const escapedUrl = this.escapeMarkdownV2Url(tweetUrl);
+    const link = `[src](${escapedUrl})`;
     if (trimmedText.length === 0) {
       return link;
     }
-    const escapedText = this.escapeHtml(trimmedText).replace(/\n/g, "<br/>");
-    return `${escapedText}<br/><br/>${link}`;
+    const escapedText = this.escapeMarkdownV2(trimmedText);
+    return `${escapedText} \\[${link}\\]`;
   }
 
   chunk<T>(input: T[], size: number): T[][] {
@@ -80,12 +80,14 @@ export class TelegramChannelPublisher {
     return result;
   }
 
-  escapeHtml(value: string) {
-    return value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+  escapeMarkdownV2(value: string) {
+    return value.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
+  }
+
+  escapeMarkdownV2Url(value: string) {
+    return encodeURI(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/\(/g, "\\(")
+      .replace(/\)/g, "\\)");
   }
 }
