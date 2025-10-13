@@ -76,11 +76,11 @@ bun x tsc --noEmit
 Для запуска в Docker контейнере:
 
 ```bash
-# Сборка образа с версией из GitVersion
+# Сборка образа
 docker build -t animemov-bot .
 
 # Или сборка с передачей версии через build arg
-docker build --build-arg VERSION=$(dotnet /root/.dotnet/tools/dotnet-gitversion /output json | jq -r '.SemVer') -t animemov-bot .
+docker build --build-arg VERSION=1.0.0 -t animemov-bot .
 
 # Запуск с рестартом при сбоях
 docker run -d --name animemov-bot --restart unless-stopped --env-file .env animemov-bot
@@ -96,12 +96,28 @@ docker stop animemov-bot && docker rm animemov-bot
 
 ## Версионирование
 
-Проект использует [GitVersion](https://gitversion.net/) для автоматического создания версий на основе git-истории:
+Проект использует [Semantic Release](https://semantic-release.gitbook.io/) для автоматического создания версий на основе [Conventional Commits](https://www.conventionalcommits.org/):
 
-- **main/master** ветки: создают релизные версии (например, `1.0.0`)
-- **develop** ветка: создает alpha-версии (например, `1.1.0-alpha.1`)
-- **feature** ветки: создают feature-версии (например, `1.1.0-feature-branch.1`)
-- **hotfix** ветки: создают hotfix-версии (например, `1.0.1-hotfix-branch.1`)
+- **feat**: новые функции → minor версия (1.0.0 → 1.1.0)
+- **fix**: исправления багов → patch версия (1.0.0 → 1.0.1)
+- **BREAKING CHANGE**: критические изменения → major версия (1.0.0 → 2.0.0)
+- **docs, style, refactor, test, chore**: не влияют на версию
+
+### Доступные команды:
+```bash
+# Запуск релиза (только в CI)
+bun run semantic-release
+
+# Локальный релиз (для тестирования)
+bun run release
+
+# Пробный запуск (без создания релиза)
+bun run release:dry-run
+```
+
+### Ветки:
+- **main/master**: создают стабильные релизы
+- **develop**: создают beta-версии (например, `1.1.0-beta.1`)
 
 Версия автоматически генерируется при сборке Docker-образа и доступна через переменную окружения `APP_VERSION`.
 

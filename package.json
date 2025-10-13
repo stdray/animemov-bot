@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "bun run src/app/main.ts",
     "build": "bun build src/app/main.ts --outdir dist",
-    "start": "bun run src/app/main.ts"
+    "start": "bun run src/app/main.ts",
+    "semantic-release": "semantic-release",
+    "release": "semantic-release --no-ci",
+    "release:dry-run": "semantic-release --dry-run",
+    "release:local": "semantic-release --config .releaserc.local.json --no-ci"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -15,8 +19,12 @@
     "twitter-api-v2": "^1.15.0"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
     "@types/node": "^20.11.30",
     "bun-types": "^1.3.0",
+    "semantic-release": "^24.2.9",
     "typescript": "^5.3.3"
   }
 }

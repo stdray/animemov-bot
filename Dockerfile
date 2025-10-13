@@ -1,9 +1,8 @@
 # Используем официальный образ Bun
 FROM oven/bun:1.3-alpine
 
-# Устанавливаем GitVersion для создания версий
-RUN apk add --no-cache git dotnet-sdk8.0
-RUN dotnet tool install --global GitVersion.Tool --version 5.12.0
+# Устанавливаем git для Semantic Release
+RUN apk add --no-cache git
 
 # Устанавливаем рабочую директорию
 WORKDIR /app
@@ -20,11 +19,8 @@ COPY . .
 # Создаем директорию для временных файлов
 RUN mkdir -p .tmp
 
-# Генерируем версию через GitVersion
-RUN dotnet /root/.dotnet/tools/dotnet-gitversion /output json > version.json || echo '{"SemVer":"1.0.0","FullSemVer":"1.0.0","InformationalVersion":"1.0.0"}' > version.json
-
 # Добавляем версию в переменные окружения
-ARG VERSION
+ARG VERSION=1.0.0
 ENV APP_VERSION=${VERSION}
 
 # Создаем пользователя для безопасности
