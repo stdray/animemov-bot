@@ -1,0 +1,56 @@
+{
+  "major-version-bump-message": "(breaking|major|breaking change)",
+  "minor-version-bump-message": "(feature|minor|feat)",
+  "patch-version-bump-message": "(fix|patch|bugfix|hotfix)",
+  "legacy-semver-padding": 4,
+  "build-metadata-padding": 4,
+  "commits-since-version-source-padding": 4,
+  "commit-message-incrementing": "Enabled",
+  "branches": {
+    "main": {
+      "regex": "^(main|master)$",
+      "mode": "ContinuousDeployment",
+      "tag": "",
+      "increment": "Patch",
+      "prevent-increment-of-merged-branch-version": true,
+      "track-merge-target": false,
+      "source-branches": ["develop", "release"]
+    },
+    "develop": {
+      "regex": "^develop$",
+      "mode": "ContinuousDeployment",
+      "tag": "alpha",
+      "increment": "Minor",
+      "prevent-increment-of-merged-branch-version": false,
+      "track-merge-target": true,
+      "source-branches": []
+    },
+    "release": {
+      "regex": "^releases?[/-]",
+      "mode": "ContinuousDeployment",
+      "tag": "beta",
+      "increment": "Patch",
+      "prevent-increment-of-merged-branch-version": true,
+      "track-merge-target": false,
+      "source-branches": ["develop", "main"]
+    },
+    "feature": {
+      "regex": "^features?[/-]",
+      "mode": "ContinuousDeployment",
+      "tag": "alpha.{BranchName}",
+      "increment": "Minor",
+      "prevent-increment-of-merged-branch-version": false,
+      "track-merge-target": false,
+      "source-branches": ["develop"]
+    },
+    "hotfix": {
+      "regex": "^hotfix(es)?[/-]",
+      "mode": "ContinuousDeployment",
+      "tag": "",
+      "increment": "Patch",
+      "prevent-increment-of-merged-branch-version": false,
+      "track-merge-target": false,
+      "source-branches": ["main"]
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "name": "amimemov-bot",
+  "name": "animemov-bot",
   "version": "0.1.0",
   "description": "Telegram бот для пересылки медиа из Twitter/X",
   "type": "module",

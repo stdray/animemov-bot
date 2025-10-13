@@ -191,7 +191,7 @@ export class TwitterMediaDownloader {
         {
           agent: this.proxyAgent,
           headers: {
-            "User-Agent": "amimemov-bot/1.0 (+https://github.com/stdray/amimemov-bot)"
+            "User-Agent": "animemov-bot/1.0 (+https://github.com/stdray/animemov-bot)"
           }
         },
         (response) => {
