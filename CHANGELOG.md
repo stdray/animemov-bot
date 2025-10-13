@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/stdray/animemov-bot/compare/v1.1.0...v1.1.1) (2025-10-13)
+
+### Bug Fixes
+
+* clean up README.md from invalid characters at end of file ([b64bac2](https://github.com/stdray/animemov-bot/commit/b64bac29c68aaec44c15520e74594b39cff165b0))
+
 ## [1.1.0](https://github.com/stdray/animemov-bot/compare/v1.0.1...v1.1.0) (2025-10-13)
 
 ### Features
