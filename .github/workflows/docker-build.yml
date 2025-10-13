@@ -59,7 +59,7 @@ jobs:
     - name: Get version from package.json
       id: version
       run: |
-        VERSION=$(bun run -e "console.log(require('./package.json').version)")
+        VERSION=$(bun -e "console.log(require('./package.json').version)")
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Version: $VERSION"
 
