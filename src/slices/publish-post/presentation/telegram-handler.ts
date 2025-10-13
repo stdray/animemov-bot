@@ -1,6 +1,6 @@
 import { Bot, Context } from "grammy";
 import { PublishPostUseCase } from "../application/publish-post.use-case";
-import { InvalidTweetUrlError, MediaDownloadError } from "../domain/errors";
+import { InvalidTweetUrlError, MediaDownloadError, RetryScheduledError } from "../domain/errors";
 import { logger } from "../../../shared/logging/logger";
 
 const commandRegex = /^\/post(?:@\w+)?\s*/i;
@@ -23,6 +23,8 @@ export const registerPublishPostHandler = (bot: Bot<Context>, useCase: PublishPo
         await ctx.reply("❌ Некорректная ссылка на пост Twitter/X", { reply_to_message_id: ctx.message!.message_id });
       } else if (error instanceof MediaDownloadError) {
         await ctx.reply("❌ Не удалось скачать вложения из Twitter/X", { reply_to_message_id: ctx.message!.message_id });
+      } else if (error instanceof RetryScheduledError) {
+        await ctx.reply(`⏳ ${error.message}`, { reply_to_message_id: ctx.message!.message_id });
       } else {
         await ctx.reply("❌ Произошла непредвиденная ошибка", { reply_to_message_id: ctx.message!.message_id });
       }

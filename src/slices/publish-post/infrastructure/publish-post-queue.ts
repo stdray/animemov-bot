@@ -129,6 +129,16 @@ export class PublishPostQueue {
     return row ? Number(row.available_at) : null;
   }
 
+  getNextRetryTimeForUser(requesterId: number): number | null {
+    const stmt = this.db.prepare(`
+      SELECT MIN(available_at) as next_retry_at
+      FROM publish_post_queue
+      WHERE requester_id = $requesterId AND status = 'pending' AND available_at > $now
+    `);
+    const row = stmt.get({ $requesterId: requesterId, $now: Date.now() }) as { next_retry_at: number } | undefined;
+    return row?.next_retry_at ?? null;
+  }
+
   reschedule(id: number, retryAt: number) {
     this.rescheduleStmt.run({ $id: id, $availableAt: retryAt, $updatedAt: Date.now() });
   }

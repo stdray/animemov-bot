@@ -15,3 +15,9 @@ export class TwitterRateLimitError extends MediaDownloadError {
     super(message);
   }
 }
+
+export class RetryScheduledError extends Error {
+  constructor(public readonly retryAt: number, message: string) {
+    super(message);
+  }
+}

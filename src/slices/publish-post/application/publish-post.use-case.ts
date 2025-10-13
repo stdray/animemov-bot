@@ -1,7 +1,7 @@
 import { logger } from "../../../shared/logging/logger";
 import { TempFileManager } from "../../../shared/storage/temp-file-manager";
 import { PublishPostCommand } from "../domain/models";
-import { InvalidTweetUrlError, TwitterRateLimitError } from "../domain/errors";
+import { InvalidTweetUrlError, TwitterRateLimitError, RetryScheduledError } from "../domain/errors";
 import { TwitterMediaDownloader } from "../infrastructure/twitter-media-downloader";
 import { TelegramChannelPublisher } from "../infrastructure/telegram-channel-publisher";
 import { PublishPostQueue, QueueJob } from "../infrastructure/publish-post-queue";
@@ -11,6 +11,7 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 type ResolverEntry = {
   resolve: () => void;
   reject: (error: unknown) => void;
+  requesterId: number;
 };
 
 export class PublishPostUseCase {
@@ -42,7 +43,7 @@ export class PublishPostUseCase {
     return new Promise<void>((resolve, reject) => {
       try {
         const jobId = this.queue.enqueue(command);
-        this.pendingResolvers.set(jobId, { resolve, reject });
+        this.pendingResolvers.set(jobId, { resolve, reject, requesterId: command.requesterId });
         logger.debug("Задача публикации поставлена в очередь", { requesterId: command.requesterId, jobId });
         this.triggerProcessing();
       } catch (error) {
@@ -134,7 +135,17 @@ export class PublishPostUseCase {
   rejectJob(jobId: number, error: unknown) {
     const entry = this.pendingResolvers.get(jobId);
     if (entry) {
-      entry.reject(error);
+      // Проверяем, есть ли ретраи в очереди для этого пользователя
+      const nextRetryTime = this.queue.getNextRetryTimeForUser(entry.requesterId);
+      if (nextRetryTime) {
+        const retryError = new RetryScheduledError(
+          nextRetryTime,
+          `Задача отложена. Следующая попытка будет через ${this.formatRetryTime(nextRetryTime)}`
+        );
+        entry.reject(retryError);
+      } else {
+        entry.reject(error);
+      }
       this.pendingResolvers.delete(jobId);
     }
   }
@@ -164,6 +175,27 @@ export class PublishPostUseCase {
       logger.info("Публикация завершена", { requesterId: command.requesterId });
     } finally {
       await this.tempFiles.cleanup(media.map((item) => item.filePath));
+    }
+  }
+
+  private formatRetryTime(retryAt: number): string {
+    const now = Date.now();
+    const diffMs = retryAt - now;
+    
+    if (diffMs <= 0) {
+      return "сейчас";
+    }
+
+    const diffSeconds = Math.ceil(diffMs / 1000);
+    const diffMinutes = Math.ceil(diffSeconds / 60);
+    const diffHours = Math.ceil(diffMinutes / 60);
+
+    if (diffHours > 1) {
+      return `${diffHours} часов`;
+    } else if (diffMinutes > 1) {
+      return `${diffMinutes} минут`;
+    } else {
+      return `${diffSeconds} секунд`;
     }
   }
 }
