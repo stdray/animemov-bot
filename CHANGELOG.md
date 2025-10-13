@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/stdray/animemov-bot/compare/v1.0.1...v1.1.0) (2025-10-13)
+
+### Features
+
+* add retry time notifications for users when errors occur ([f4611fb](https://github.com/stdray/animemov-bot/commit/f4611fbaa2720d6a216507ef58e1bc22d8555e09))
+
 ## [1.0.1](https://github.com/stdray/animemov-bot/compare/v1.0.0...v1.0.1) (2025-10-13)
 
 ### Bug Fixes
