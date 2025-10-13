@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/stdray/animemov-bot/compare/v1.1.1...v1.1.2) (2025-10-13)
+
+### Bug Fixes
+
+* correct bun command for getting version in GitHub Actions ([9eaceea](https://github.com/stdray/animemov-bot/commit/9eaceea95264ee46d33f1223b20728a632268dee))
+
 ## [1.1.1](https://github.com/stdray/animemov-bot/compare/v1.1.0...v1.1.1) (2025-10-13)
 
 ### Bug Fixes
