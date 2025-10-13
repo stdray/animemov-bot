@@ -7,6 +7,7 @@ import { TwitterMediaDownloader } from "../slices/publish-post/infrastructure/tw
 import { TelegramChannelPublisher } from "../slices/publish-post/infrastructure/telegram-channel-publisher";
 import { PublishPostUseCase } from "../slices/publish-post/application/publish-post.use-case";
 import { registerPublishPostHandler } from "../slices/publish-post/presentation/telegram-handler";
+import { PublishPostQueue } from "../slices/publish-post/infrastructure/publish-post-queue";
 
 async function bootstrap() {
   const bot = new Bot(env.telegramBotToken);
@@ -14,7 +15,8 @@ async function bootstrap() {
   const tempFiles = new TempFileManager();
   const twitterDownloader = new TwitterMediaDownloader(tempFiles);
   const telegramPublisher = new TelegramChannelPublisher(bot.api);
-  const publishPostUseCase = new PublishPostUseCase(twitterDownloader, telegramPublisher, tempFiles);
+  const queue = new PublishPostQueue(env.queueDbPath);
+  const publishPostUseCase = new PublishPostUseCase(twitterDownloader, telegramPublisher, tempFiles, queue);
 
   registerPublishPostHandler(bot, publishPostUseCase);
 

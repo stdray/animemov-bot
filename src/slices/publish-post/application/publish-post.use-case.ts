@@ -4,43 +4,50 @@ import { PublishPostCommand } from "../domain/models";
 import { InvalidTweetUrlError, TwitterRateLimitError } from "../domain/errors";
 import { TwitterMediaDownloader } from "../infrastructure/twitter-media-downloader";
 import { TelegramChannelPublisher } from "../infrastructure/telegram-channel-publisher";
+import { PublishPostQueue, QueueJob } from "../infrastructure/publish-post-queue";
 
-type QueueJob = {
-  command: PublishPostCommand;
+type TimerHandle = ReturnType<typeof setTimeout>;
+
+type ResolverEntry = {
   resolve: () => void;
   reject: (error: unknown) => void;
 };
 
 export class PublishPostUseCase {
-  readonly queue: QueueJob[] = [];
-  processing = false;
-  nextAvailableAt = 0;
   readonly twitterDownloader: TwitterMediaDownloader;
   readonly channelPublisher: TelegramChannelPublisher;
   readonly tempFiles: TempFileManager;
+  readonly queue: PublishPostQueue;
+  processing = false;
+  wakeTimer: TimerHandle | null = null;
+  wakeAt: number | null = null;
+  readonly pendingResolvers = new Map<number, ResolverEntry>();
 
   constructor(
     twitterDownloader: TwitterMediaDownloader,
     channelPublisher: TelegramChannelPublisher,
-    tempFiles: TempFileManager
+    tempFiles: TempFileManager,
+    queue: PublishPostQueue
   ) {
     this.twitterDownloader = twitterDownloader;
     this.channelPublisher = channelPublisher;
     this.tempFiles = tempFiles;
+    this.queue = queue;
+    this.triggerProcessing();
   }
 
   async execute(command: PublishPostCommand) {
     this.validate(command);
 
     return new Promise<void>((resolve, reject) => {
-      this.queue.push({ command, resolve, reject });
-      logger.debug("Задача публикации поставлена в очередь", {
-        requesterId: command.requesterId,
-        queueLength: this.queue.length
-      });
-      void this.processQueue().catch((error) => {
-        logger.error("Ошибка обработки очереди публикаций", { error });
-      });
+      try {
+        const jobId = this.queue.enqueue(command);
+        this.pendingResolvers.set(jobId, { resolve, reject });
+        logger.debug("Задача публикации поставлена в очередь", { requesterId: command.requesterId, jobId });
+        this.triggerProcessing();
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -53,44 +60,99 @@ export class PublishPostUseCase {
     }
   }
 
-  async processQueue() {
+  triggerProcessing() {
     if (this.processing) {
       return;
     }
+    if (this.wakeTimer) {
+      clearTimeout(this.wakeTimer);
+      this.wakeTimer = null;
+      this.wakeAt = null;
+    }
     this.processing = true;
+    void this.processQueue().catch((error) => {
+      logger.error("Ошибка обработки очереди публикаций", { error });
+    });
+  }
 
-    while (this.queue.length > 0) {
-      const job = this.queue[0];
-      const now = Date.now();
-      const waitFor = this.nextAvailableAt - now;
-      if (waitFor > 0) {
-        logger.warn("Ожидание окна после rate limit", { waitMs: waitFor, queueLength: this.queue.length });
-        await this.delay(waitFor);
-        continue;
-      } else {
-        this.nextAvailableAt = 0;
-      }
-
-      try {
-        await this.runJob(job.command);
-        job.resolve();
-        this.queue.shift();
-      } catch (error) {
-        if (error instanceof TwitterRateLimitError) {
-          this.nextAvailableAt = Math.max(this.nextAvailableAt, error.retryAt);
-          logger.warn("Запрос отложен из-за rate limit", {
-            requesterId: job.command.requesterId,
-            retryAt: this.nextAvailableAt
-          });
-          continue;
+  async processQueue() {
+    try {
+      while (true) {
+        const now = Date.now();
+        const job = this.queue.reserveNext(now);
+        if (!job) {
+          const nextAvailableAt = this.queue.getNextAvailableAt();
+          if (nextAvailableAt) {
+            this.scheduleWake(nextAvailableAt);
+          }
+          break;
         }
 
-        job.reject(error);
-        this.queue.shift();
+        await this.handleJob(job);
       }
+    } finally {
+      this.processing = false;
     }
+  }
 
-    this.processing = false;
+  async handleJob(job: QueueJob) {
+    const command: PublishPostCommand = {
+      requesterId: job.requesterId,
+      tweetUrl: job.tweetUrl,
+      userText: job.userText
+    };
+
+    try {
+      await this.runJob(command);
+      this.queue.complete(job.id);
+      this.resolveJob(job.id);
+    } catch (error) {
+      if (error instanceof TwitterRateLimitError) {
+        this.queue.reschedule(job.id, error.retryAt);
+        this.scheduleWake(error.retryAt);
+        logger.warn("Задача отложена из-за rate limit", {
+          jobId: job.id,
+          retryAt: error.retryAt
+        });
+        return;
+      }
+
+      logger.error("Ошибка обработки задачи публикации", { jobId: job.id, error });
+      this.queue.fail(job.id);
+      this.rejectJob(job.id, error);
+    }
+  }
+
+  resolveJob(jobId: number) {
+    const entry = this.pendingResolvers.get(jobId);
+    if (entry) {
+      entry.resolve();
+      this.pendingResolvers.delete(jobId);
+    }
+  }
+
+  rejectJob(jobId: number, error: unknown) {
+    const entry = this.pendingResolvers.get(jobId);
+    if (entry) {
+      entry.reject(error);
+      this.pendingResolvers.delete(jobId);
+    }
+  }
+
+  scheduleWake(timestamp: number) {
+    if (this.wakeAt && this.wakeAt <= timestamp) {
+      return;
+    }
+    if (this.wakeTimer) {
+      clearTimeout(this.wakeTimer);
+    }
+    const delayMs = Math.max(0, timestamp - Date.now());
+    this.wakeAt = timestamp;
+    this.wakeTimer = setTimeout(() => {
+      this.wakeTimer = null;
+      this.wakeAt = null;
+      this.triggerProcessing();
+    }, delayMs);
   }
 
   async runJob(command: PublishPostCommand) {
@@ -103,12 +165,5 @@ export class PublishPostUseCase {
     } finally {
       await this.tempFiles.cleanup(media.map((item) => item.filePath));
     }
-  }
-
-  async delay(ms: number) {
-    if (ms <= 0) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

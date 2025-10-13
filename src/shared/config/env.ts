@@ -14,6 +14,8 @@ if (!existsSync(tempDir)) {
   mkdirSync(tempDir, { recursive: true });
 }
 
+const defaultQueueDbPath = process.env["QUEUE_DB_PATH"] ?? path.resolve(tempDir, "queue.sqlite");
+
 export const env = {
   telegramBotToken: requireEnv("TELEGRAM_BOT_TOKEN"),
   telegramTargetChannelId: requireEnv("TELEGRAM_TARGET_CHANNEL_ID"),
@@ -24,5 +26,6 @@ export const env = {
     consumerKey: requireEnv("TWITTER_CONSUMER_KEY")
   },
   twitterProxyUrl: requireEnv("TWITTER_PROXY_URL"),
-  tempDir
+  tempDir,
+  queueDbPath: defaultQueueDbPath
 };
