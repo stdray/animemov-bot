@@ -1,10 +1,6 @@
 # Используем официальный образ Bun
 FROM oven/bun:1.3-alpine
 
-# Устанавливаем GitVersion для создания версий
-RUN apk add --no-cache git dotnet-sdk8.0
-RUN dotnet tool install --global GitVersion.Tool --version 5.12.0
-
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
@@ -12,16 +8,13 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 
 # Устанавливаем зависимости
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --production
 
-# Копируем исходный код
-COPY . .
+# Копируем артефакты сборки
+COPY dist ./dist
 
 # Создаем директорию для временных файлов
 RUN mkdir -p .tmp
-
-# Генерируем версию через GitVersion
-RUN dotnet /root/.dotnet/tools/dotnet-gitversion /output json > version.json || echo '{"SemVer":"1.0.0","FullSemVer":"1.0.0","InformationalVersion":"1.0.0"}' > version.json
 
 # Добавляем версию в переменные окружения
 ARG VERSION
@@ -39,4 +32,4 @@ USER bun
 EXPOSE 3000
 
 # Команда запуска
-CMD ["bun", "start"]
+CMD ["bun", "run", "dist/main.js"]
