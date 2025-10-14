@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import path from "path";
 
 const requireEnv = (key: string, { optional = false }: { optional?: boolean } = {}) => {
@@ -16,6 +16,27 @@ if (!existsSync(tempDir)) {
 
 const defaultQueueDbPath = process.env["QUEUE_DB_PATH"] ?? path.resolve(tempDir, "queue.sqlite");
 
+const fallbackVersion = (() => {
+  const pkgPath = path.resolve("package.json");
+  if (!existsSync(pkgPath)) {
+    return "unknown";
+  }
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    return typeof pkg.version === "string" && pkg.version.trim().length > 0 ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
+
+const appVersionValue = (() => {
+  const fromEnv = process.env["APP_VERSION"]?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  return fallbackVersion;
+})();
+
 export const env = {
   telegramBotToken: requireEnv("TELEGRAM_BOT_TOKEN"),
   telegramTargetChannelId: requireEnv("TELEGRAM_TARGET_CHANNEL_ID"),
@@ -28,5 +49,5 @@ export const env = {
   twitterProxyUrl: requireEnv("TWITTER_PROXY_URL"),
   tempDir,
   queueDbPath: defaultQueueDbPath,
-  appVersion: requireEnv("APP_VERSION", { optional: true }) || "unknown"
+  appVersion: appVersionValue
 };

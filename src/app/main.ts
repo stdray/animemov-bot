@@ -18,6 +18,8 @@ async function bootstrap() {
   const queue = new PublishPostQueue(env.queueDbPath);
   const publishPostUseCase = new PublishPostUseCase(twitterDownloader, telegramPublisher, tempFiles, queue);
 
+  logger.info("Инициализация бота", { version: env.appVersion });
+
   registerPublishPostHandler(bot, publishPostUseCase);
 
   bot.command("version", async (ctx) => {
@@ -29,7 +31,12 @@ async function bootstrap() {
   });
 
   const me = await bot.api.getMe();
+  await bot.api.setMyCommands([
+    { command: "post", description: "Опубликовать медиа из Twitter/X" },
+    { command: "version", description: "Показать текущую версию бота" }
+  ]);
   logger.info("Бот авторизован", { username: me.username });
+  logger.info("Версия бота", { version: env.appVersion, username: me.username });
   await bot.start();
 }
 
