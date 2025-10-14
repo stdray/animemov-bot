@@ -20,6 +20,10 @@ async function bootstrap() {
 
   registerPublishPostHandler(bot, publishPostUseCase);
 
+  bot.command("version", async (ctx) => {
+    await ctx.reply(`Текущая версия: ${env.appVersion}`);
+  });
+
   bot.catch((err) => {
     logger.error("Необработанная ошибка Telegram", { error: err.error });
   });

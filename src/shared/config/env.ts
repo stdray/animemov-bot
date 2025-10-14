@@ -27,5 +27,6 @@ export const env = {
   },
   twitterProxyUrl: requireEnv("TWITTER_PROXY_URL"),
   tempDir,
-  queueDbPath: defaultQueueDbPath
+  queueDbPath: defaultQueueDbPath,
+  appVersion: requireEnv("APP_VERSION", { optional: true }) || "unknown"
 };
