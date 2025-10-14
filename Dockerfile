@@ -20,14 +20,6 @@ RUN mkdir -p .tmp
 ARG VERSION
 ENV APP_VERSION=${VERSION}
 
-# Создаем пользователя для безопасности
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S bun -u 1001
-
-# Меняем владельца файлов
-RUN chown -R bun:nodejs /app
-USER bun
-
 # Открываем порт (если потребуется для health check)
 EXPOSE 3000
 
