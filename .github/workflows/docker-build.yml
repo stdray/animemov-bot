@@ -79,8 +79,8 @@ jobs:
           cd "${{ secrets.DEPLOY_WORKDIR }}"
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semver }}"
           CONTAINER_NAME="$IMAGE"
-          docker pull "$IMAGE"
-          docker stop "$CONTAINER_NAME" || true
-          docker rm "$CONTAINER_NAME" || true
-          docker run -d --name "$CONTAINER_NAME" --restart unless-stopped "$IMAGE"
-          docker system prune -f
+          sudo docker pull "$IMAGE"
+          sudo docker stop "$CONTAINER_NAME" || true
+          sudo docker rm "$CONTAINER_NAME" || true
+          sudo docker run -d --name "$CONTAINER_NAME" --restart unless-stopped "$IMAGE"
+          sudo docker system prune -f
