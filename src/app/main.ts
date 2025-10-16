@@ -22,19 +22,11 @@ async function bootstrap() {
 
   registerPublishPostHandler(bot, publishPostUseCase);
 
-  bot.command("version", async (ctx) => {
-    await ctx.reply(`Текущая версия: ${env.appVersion}`);
-  });
-
   bot.catch((err) => {
     logger.error("Необработанная ошибка Telegram", { error: err.error });
   });
 
   const me = await bot.api.getMe();
-  await bot.api.setMyCommands([
-    { command: "post", description: "Опубликовать медиа из Twitter/X" },
-    { command: "version", description: "Показать текущую версию бота" }
-  ]);
   logger.info("Бот авторизован", { username: me.username });
   logger.info("Версия бота", { version: env.appVersion, username: me.username });
   await bot.start();

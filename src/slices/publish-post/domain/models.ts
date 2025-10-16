@@ -11,3 +11,5 @@ export interface PublishPostCommand {
   userText: string;
   requesterId: number;
 }
+
+export const TWEET_QUOTE_MARKER = "__INCLUDE_TWEET_TEXT__";

@@ -1,6 +1,6 @@
 import { logger } from "../../../shared/logging/logger";
 import { TempFileManager } from "../../../shared/storage/temp-file-manager";
-import { PublishPostCommand } from "../domain/models";
+import { PublishPostCommand, TWEET_QUOTE_MARKER } from "../domain/models";
 import { InvalidTweetUrlError, TwitterRateLimitError } from "../domain/errors";
 import { TwitterMediaDownloader } from "../infrastructure/twitter-media-downloader";
 import { TelegramChannelPublisher } from "../infrastructure/telegram-channel-publisher";
@@ -157,13 +157,39 @@ export class PublishPostUseCase {
 
   async runJob(command: PublishPostCommand) {
     logger.info("Начало публикации поста", { requesterId: command.requesterId });
-    const media = await this.twitterDownloader.download(command.tweetUrl);
+    const { media, tweetText } = await this.twitterDownloader.download(command.tweetUrl);
+    const finalUserText = this.prepareUserText(command.userText, tweetText);
 
     try {
-      await this.channelPublisher.publish(media, command.userText, command.tweetUrl);
+      await this.channelPublisher.publish(media, finalUserText, command.tweetUrl);
       logger.info("Публикация завершена", { requesterId: command.requesterId });
     } finally {
       await this.tempFiles.cleanup(media.map((item) => item.filePath));
     }
+  }
+
+  prepareUserText(userText: string, tweetText: string) {
+    const hasMarker = userText.includes(TWEET_QUOTE_MARKER);
+    let cleanedText = userText.split(TWEET_QUOTE_MARKER).join("").trim();
+
+    if (!hasMarker) {
+      return cleanedText;
+    }
+
+    const normalizedTweetText = tweetText.trim();
+    if (normalizedTweetText.length === 0) {
+      return cleanedText;
+    }
+
+    const quote = normalizedTweetText
+      .split(/\r?\n/)
+      .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+      .join("\n");
+
+    if (cleanedText.length === 0) {
+      return quote;
+    }
+
+    return `${cleanedText}\n\n${quote}`;
   }
 }

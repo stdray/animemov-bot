@@ -2,20 +2,15 @@ import { Bot, Context } from "grammy";
 import { PublishPostUseCase } from "../application/publish-post.use-case";
 import { InvalidTweetUrlError, MediaDownloadError } from "../domain/errors";
 import { logger } from "../../../shared/logging/logger";
+import { env } from "../../../shared/config/env";
+import { TWEET_QUOTE_MARKER } from "../domain/models";
 
-const commandRegex = /^\/post(?:@\w+)?\s*/i;
+const tweetLinkRegex = /(https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[^\s]+)/i;
+const quoteTokenDetectionRegex = /(?:^|\s)(тви|twi)(?=\s|$)/iu;
+const quoteTokenRemovalRegex = /(?:^|\s)(тви|twi)(?=\s|$)/giu;
 
 export const registerPublishPostHandler = (bot: Bot<Context>, useCase: PublishPostUseCase) => {
-  type ProcessResult = "retry" | "done";
-  const pendingRequests = new Set<string>();
-
-  const getPendingKey = (ctx: Context) => {
-    const chatId = ctx.chat?.id ?? 0;
-    const userId = ctx.from?.id ?? 0;
-    return `${chatId}:${userId}`;
-  };
-
-  const processPost = async (ctx: Context, text: string): Promise<ProcessResult> => {
+  const processPost = async (ctx: Context, text: string): Promise<void> => {
     try {
       const { tweetUrl, userText } = parsePayload(text);
       await ctx.reply("⏳ Обрабатываю запрос, пожалуйста подождите...", { reply_to_message_id: ctx.message!.message_id });
@@ -25,11 +20,10 @@ export const registerPublishPostHandler = (bot: Bot<Context>, useCase: PublishPo
         userText
       });
       await ctx.reply("✅ Сообщение отправлено в канал", { reply_to_message_id: ctx.message!.message_id });
-      return "done";
     } catch (error) {
       if (error instanceof InvalidTweetUrlError) {
         await ctx.reply("❌ Некорректная ссылка на пост Twitter/X", { reply_to_message_id: ctx.message?.message_id });
-        return "retry";
+        return;
       }
       logger.error("Ошибка при обработке запроса публикации", { error });
       if (error instanceof MediaDownloadError) {
@@ -37,38 +31,34 @@ export const registerPublishPostHandler = (bot: Bot<Context>, useCase: PublishPo
       } else {
         await ctx.reply("❌ Произошла непредвиденная ошибка", { reply_to_message_id: ctx.message!.message_id });
       }
-      return "done";
     }
   };
 
-  bot.command("post", async (ctx) => {
-    const key = getPendingKey(ctx);
-    pendingRequests.add(key);
-    await ctx.reply("Отправьте ссылку на пост Twitter/X и текст сообщения отдельным сообщением", {
-      reply_to_message_id: ctx.message?.message_id
-    });
-  });
-
   bot.on("message:text", async (ctx) => {
-    const key = getPendingKey(ctx);
-    if (!pendingRequests.has(key)) {
+    const text = ctx.message?.text ?? "";
+    if (!tweetLinkRegex.test(text)) {
+      await ctx.reply(`Текущая версия: ${env.appVersion}`, { reply_to_message_id: ctx.message?.message_id });
       return;
     }
 
-    const result = await processPost(ctx, ctx.message.text);
-    if (result === "done") {
-      pendingRequests.delete(key);
-    }
+    await processPost(ctx, text);
   });
 };
 
 const parsePayload = (text: string) => {
-  const payload = text.replace(commandRegex, "").trim();
-  const urlMatch = payload.match(/(https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[^\s]+)/i);
+  const urlMatch = text.match(tweetLinkRegex);
   if (!urlMatch) {
     throw new InvalidTweetUrlError();
   }
   const tweetUrl = urlMatch[1];
-  const userText = payload.replace(urlMatch[1], "").trim();
+  const payloadWithoutUrl = text.replace(urlMatch[0], " ");
+  const hasQuoteToken = quoteTokenDetectionRegex.test(payloadWithoutUrl);
+  let userText = payloadWithoutUrl.replace(quoteTokenRemovalRegex, " ").replace(tweetLinkRegex, " ");
+  userText = userText.replace(/\s+/g, " ").trim();
+
+  if (hasQuoteToken) {
+    userText = userText.length > 0 ? `${userText}\n\n${TWEET_QUOTE_MARKER}` : TWEET_QUOTE_MARKER;
+  }
+
   return { tweetUrl, userText };
 };

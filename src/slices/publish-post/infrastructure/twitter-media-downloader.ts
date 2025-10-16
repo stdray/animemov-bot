@@ -42,7 +42,7 @@ export class TwitterMediaDownloader {
     );
   }
 
-  async download(tweetUrl: string): Promise<DownloadedMedia[]> {
+  async download(tweetUrl: string): Promise<{ media: DownloadedMedia[]; tweetText: string }> {
     const tweetId = this.extractTweetId(tweetUrl);
     logger.debug("Запрос медиа по твиту", { tweetId });
 
@@ -95,7 +95,10 @@ export class TwitterMediaDownloader {
       });
     }
 
-    return downloads;
+    return {
+      media: downloads,
+      tweetText: result.data?.text ?? ""
+    };
   }
 
   extractTweetId(tweetUrl: string): string {
@@ -127,7 +130,7 @@ export class TwitterMediaDownloader {
     }
 
     if (media.type === "video" || media.type === "animated_gif") {
-      const variants = (media as any).variants as Array<{ url: string; bitrate?: number; content_type: string }>;
+      const variants = media.variants as Array<{ url: string; bitrate?: number; content_type: string }>;
       if (!variants?.length) {
         throw new MediaDownloadError("Видео не содержит доступных вариантов");
       }

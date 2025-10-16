@@ -81,7 +81,7 @@ export class TelegramChannelPublisher {
   }
 
   escapeMarkdownV2(value: string) {
-    return value.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
+    return value.replace(/([_*\[\]()~`#+\-=|{}.!\\])/g, "\\$1");
   }
 
   escapeMarkdownV2Url(value: string) {
