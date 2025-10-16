@@ -77,8 +77,8 @@ jobs:
         password: ${{ secrets.DEPLOY_PASSWORD }}
         script: |
           cd "${{ secrets.DEPLOY_WORKDIR }}"
-          IMAGE="ghcr.io/stdray/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semver }}"
-          CONTAINER_NAME="${{ env.IMAGE_NAME }}"
+          IMAGE="ghcr.io/stdray/animemov-bot:${{ steps.gitversion.outputs.semver }}"
+          CONTAINER_NAME="animemov-bot"
           PASSWORD="${{ secrets.DEPLOY_PASSWORD }}"
           run_sudo() {
             printf '%s\n' "$PASSWORD" | sudo -S -p '' "$@"
