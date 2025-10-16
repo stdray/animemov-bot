@@ -79,7 +79,6 @@ jobs:
           cd "${{ secrets.DEPLOY_WORKDIR }}"
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semver }}"
           CONTAINER_NAME_RAW="$IMAGE"
-          CONTAINER_NAME="$(echo "$CONTAINER_NAME_RAW" | tr '/:' '-')"
           PASSWORD="${{ secrets.DEPLOY_PASSWORD }}"
           run_sudo() {
             printf '%s\n' "$PASSWORD" | sudo -S -p '' "$@"
