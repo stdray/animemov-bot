@@ -68,3 +68,19 @@ jobs:
           VERSION=${{ steps.gitversion.outputs.fullsemver }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.DEPLOY_HOST }}
+        username: ${{ secrets.DEPLOY_USERNAME }}
+        password: ${{ secrets.DEPLOY_PASSWORD }}
+        script: |
+          cd "${{ secrets.DEPLOY_WORKDIR }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semver }}"
+          CONTAINER_NAME="$IMAGE"
+          docker pull "$IMAGE"
+          docker stop "$CONTAINER_NAME" || true
+          docker rm "$CONTAINER_NAME" || true
+          docker run -d --name "$CONTAINER_NAME" --restart unless-stopped "$IMAGE"
+          docker system prune -f
