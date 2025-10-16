@@ -86,5 +86,5 @@ jobs:
           run_sudo docker pull "$IMAGE"
           run_sudo docker stop "$CONTAINER_NAME" || true
           run_sudo docker rm "$CONTAINER_NAME" || true
-          run_sudo docker run -d --name "$CONTAINER_NAME" --restart unless-stopped "$IMAGE"
+          run_sudo docker run -d --name "$CONTAINER_NAME" --restart unless-stopped --env-file .env "$IMAGE"
           run_sudo docker system prune -a -f
