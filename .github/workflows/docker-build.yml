@@ -78,6 +78,7 @@ jobs:
         script: |
           cd "${{ secrets.DEPLOY_WORKDIR }}"
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semver }}"
+          CONTAINER_NAME="${{ env.IMAGE_NAME }}"
           CONTAINER_NAME_RAW="$IMAGE"
           PASSWORD="${{ secrets.DEPLOY_PASSWORD }}"
           run_sudo() {
@@ -86,5 +87,5 @@ jobs:
           run_sudo docker pull "$IMAGE"
           run_sudo docker stop "$CONTAINER_NAME" || true
           run_sudo docker rm "$CONTAINER_NAME" || true
-          run_sudo docker run -d --name "$CONTAINER_NAME" --restart unless-stopped "$IMAGE"
+          run_sudo docker run -d --name "$CONTAINER_NAME" --restart unless-stopped "$CONTAINER_NAME_RAW"
           run_sudo docker system prune -f
