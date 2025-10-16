@@ -13,9 +13,9 @@ export class TelegramChannelPublisher {
     this.api = api;
   }
 
-  async publish(media: DownloadedMedia[], userText: string, tweetUrl: string) {
+  async publish(media: DownloadedMedia[], composedText: string) {
     if (media.length === 0) {
-      await this.api.sendMessage(env.telegramTargetChannelId, this.composeCaption(userText, tweetUrl), {
+      await this.api.sendMessage(env.telegramTargetChannelId, composedText, {
         parse_mode: "MarkdownV2"
       });
       return;
@@ -27,10 +27,9 @@ export class TelegramChannelPublisher {
     for (const [index, chunk] of chunks.entries()) {
       const album = chunk.map((item) => this.mapMedia(item));
       if (!captionSent && album.length > 0) {
-        const caption = this.composeCaption(userText, tweetUrl);
         album[0] = {
           ...album[0],
-          caption,
+          caption: composedText,
           parse_mode: "MarkdownV2"
         } as InputMediaPhoto | InputMediaVideo;
         captionSent = true;
@@ -40,7 +39,7 @@ export class TelegramChannelPublisher {
     }
 
     if (!captionSent) {
-      await this.api.sendMessage(env.telegramTargetChannelId, this.composeCaption(userText, tweetUrl), {
+      await this.api.sendMessage(env.telegramTargetChannelId, composedText, {
         parse_mode: "MarkdownV2"
       });
     }
@@ -61,33 +60,11 @@ export class TelegramChannelPublisher {
     } satisfies InputMediaVideo;
   }
 
-  composeCaption(userText: string, tweetUrl: string) {
-    const trimmedText = userText.trim();
-    const escapedUrl = this.escapeMarkdownV2Url(tweetUrl);
-    const link = `[src](${escapedUrl})`;
-    if (trimmedText.length === 0) {
-      return link;
-    }
-    const escapedText = this.escapeMarkdownV2(trimmedText);
-    return `${escapedText} \\[${link}\\]`;
-  }
-
   chunk<T>(input: T[], size: number): T[][] {
     const result: T[][] = [];
     for (let i = 0; i < input.length; i += size) {
       result.push(input.slice(i, i + size));
     }
     return result;
-  }
-
-  escapeMarkdownV2(value: string) {
-    return value.replace(/([_*\[\]()~`#+\-=|{}.!\\])/g, "\\$1");
-  }
-
-  escapeMarkdownV2Url(value: string) {
-    return encodeURI(value)
-      .replace(/\\/g, "\\\\")
-      .replace(/\(/g, "\\(")
-      .replace(/\)/g, "\\)");
   }
 }

@@ -12,7 +12,7 @@ import { URL } from "node:url";
 import { env } from "../../../shared/config/env";
 import { logger } from "../../../shared/logging/logger";
 import { TempFileManager } from "../../../shared/storage/temp-file-manager";
-import { DownloadedMedia } from "../domain/models";
+import { DownloadedMedia, VideoVariantOption, VideoVariantsInfo } from "../domain/models";
 import { InvalidTweetUrlError, MediaDownloadError, TwitterRateLimitError } from "../domain/errors";
 
 const tweetIdRegex = /(?:twitter|x)\.com\/[^/]+\/status\/(\d+)/i;
@@ -42,7 +42,10 @@ export class TwitterMediaDownloader {
     );
   }
 
-  async download(tweetUrl: string): Promise<{ media: DownloadedMedia[]; tweetText: string }> {
+  async download(
+    tweetUrl: string,
+    callbacks?: { onVideoVariants?: (variants: VideoVariantsInfo[]) => Promise<void> | void }
+  ): Promise<{ media: DownloadedMedia[]; tweetText: string; videoVariants: VideoVariantsInfo[] }> {
     const tweetId = this.extractTweetId(tweetUrl);
     logger.debug("Запрос медиа по твиту", { tweetId });
 
@@ -73,9 +76,32 @@ export class TwitterMediaDownloader {
       throw new MediaDownloadError("В твите отсутствуют вложения");
     }
 
+    const videoVariants: VideoVariantsInfo[] = [];
+    let videoIndex = 0;
+
+    const mediaInfos = media.map((item) => {
+      const info = this.getMediaDownloadInfo(item);
+      if (info.videoOptions && info.videoOptions.length > 0) {
+        videoIndex += 1;
+        videoVariants.push({
+          mediaIndex: videoIndex,
+          options: info.videoOptions
+        });
+      }
+      return { item, info };
+    });
+
+    if (videoVariants.length > 0 && callbacks?.onVideoVariants) {
+      try {
+        await callbacks.onVideoVariants(videoVariants);
+      } catch (error) {
+        logger.warn("Ошибка при уведомлении о вариантах видео", { error });
+      }
+    }
+
     const downloads: DownloadedMedia[] = [];
-    for (const item of media) {
-      const url = this.getMediaUrl(item);
+    for (const { item, info } of mediaInfos) {
+      const { url } = info;
       const extension = this.resolveExtension(item.type);
       const filePath = this.tempFiles.createPath(extension);
 
@@ -97,7 +123,8 @@ export class TwitterMediaDownloader {
 
     return {
       media: downloads,
-      tweetText: result.data?.text ?? ""
+      tweetText: result.data?.text ?? "",
+      videoVariants
     };
   }
 
@@ -124,9 +151,9 @@ export class TwitterMediaDownloader {
       .filter((item): item is MediaObjectV2 => Boolean(item));
   }
 
-  getMediaUrl(media: MediaObjectV2): string {
+  getMediaDownloadInfo(media: MediaObjectV2): { url: string; videoOptions?: VideoVariantOption[] } {
     if (media.type === "photo" && media.url) {
-      return media.url;
+      return { url: media.url };
     }
 
     if (media.type === "video" || media.type === "animated_gif") {
@@ -134,16 +161,61 @@ export class TwitterMediaDownloader {
       if (!variants?.length) {
         throw new MediaDownloadError("Видео не содержит доступных вариантов");
       }
-      const mp4 = variants
-        .filter((variant) => variant.content_type === "video/mp4")
-        .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0];
-      if (!mp4) {
+      const mp4Variants = variants.filter((variant) => variant.content_type === "video/mp4");
+      if (!mp4Variants.length) {
         throw new MediaDownloadError("Видео не содержит MP4 вариантов");
       }
-      return mp4.url;
+      const options = mp4Variants.map((variant) => ({
+        url: variant.url,
+        bitrate: variant.bitrate,
+        ...this.extractResolution(variant.url)
+      }));
+
+      const best = options.reduce((current, candidate) => {
+        if (!current) {
+          return candidate;
+        }
+        const currentArea = (current.width ?? 0) * (current.height ?? 0);
+        const candidateArea = (candidate.width ?? 0) * (candidate.height ?? 0);
+        if (candidateArea > currentArea) {
+          return candidate;
+        }
+        if (candidateArea < currentArea) {
+          return current;
+        }
+        const currentBitrate = current.bitrate ?? 0;
+        const candidateBitrate = candidate.bitrate ?? 0;
+        return candidateBitrate > currentBitrate ? candidate : current;
+      }, options[0]);
+
+      if (!best) {
+        throw new MediaDownloadError("Видео не содержит MP4 вариантов");
+      }
+      const sortedOptions = options.sort((a, b) => {
+        const areaA = (a.width ?? 0) * (a.height ?? 0);
+        const areaB = (b.width ?? 0) * (b.height ?? 0);
+        if (areaA !== areaB) {
+          return areaB - areaA;
+        }
+        return (b.bitrate ?? 0) - (a.bitrate ?? 0);
+      });
+      return { url: best.url, videoOptions: sortedOptions };
     }
 
     throw new MediaDownloadError(`Неизвестный тип медиа ${media.type}`);
+  }
+
+  extractResolution(url: string): { width?: number; height?: number } {
+    const match = /\/(\d+)x(\d+)\//.exec(url);
+    if (!match) {
+      return {};
+    }
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return {};
+    }
+    return { width, height };
   }
 
   resolveExtension(type: MediaObjectV2["type"]) {

@@ -8,6 +8,7 @@ import { TelegramChannelPublisher } from "../slices/publish-post/infrastructure/
 import { PublishPostUseCase } from "../slices/publish-post/application/publish-post.use-case";
 import { registerPublishPostHandler } from "../slices/publish-post/presentation/telegram-handler";
 import { PublishPostQueue } from "../slices/publish-post/infrastructure/publish-post-queue";
+import { TelegramUserNotifier } from "../slices/publish-post/infrastructure/telegram-user-notifier";
 
 async function bootstrap() {
   const bot = new Bot(env.telegramBotToken);
@@ -16,7 +17,8 @@ async function bootstrap() {
   const twitterDownloader = new TwitterMediaDownloader(tempFiles);
   const telegramPublisher = new TelegramChannelPublisher(bot.api);
   const queue = new PublishPostQueue(env.queueDbPath);
-  const publishPostUseCase = new PublishPostUseCase(twitterDownloader, telegramPublisher, tempFiles, queue);
+  const userNotifier = new TelegramUserNotifier(bot.api);
+  const publishPostUseCase = new PublishPostUseCase(twitterDownloader, telegramPublisher, tempFiles, queue, userNotifier);
 
   logger.info("Инициализация бота", { version: env.appVersion });
 
