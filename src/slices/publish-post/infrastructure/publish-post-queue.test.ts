@@ -4,6 +4,25 @@ import { PublishPostCommand } from "../domain/models";
 import { existsSync, unlinkSync } from "fs";
 import path from "path";
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function removeIfExists(filePath: string, attempts = 40, delayMs = 100) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (!existsSync(filePath)) {
+      return;
+    }
+    try {
+      unlinkSync(filePath);
+      return;
+    } catch (error) {
+      if (attempt === attempts - 1) {
+        return;
+      }
+      await sleep(delayMs);
+    }
+  }
+}
+
 describe("PublishPostQueue - Message Priority", () => {
   let queue: PublishPostQueue;
   let testDbPath: string;
@@ -14,12 +33,14 @@ describe("PublishPostQueue - Message Priority", () => {
     queue = new PublishPostQueue(testDbPath);
   });
 
-  afterEach(() => {
-    // Clean up test database
-    queue.db.close();
-    if (existsSync(testDbPath)) {
-      unlinkSync(testDbPath);
-    }
+  afterEach(async () => {
+    const walPath = `${testDbPath}-wal`;
+    const shmPath = `${testDbPath}-shm`;
+    queue.close();
+    await sleep(200);
+    await removeIfExists(testDbPath);
+    await removeIfExists(walPath);
+    await removeIfExists(shmPath);
   });
 
   test("delayed message should be processed before other Twitter messages but after immediate messages", async () => {

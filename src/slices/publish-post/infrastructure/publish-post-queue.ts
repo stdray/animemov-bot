@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, unlinkSync } from "fs";
 import path from "path";
 import { PublishPostCommand } from "../domain/models";
 
@@ -34,6 +34,9 @@ export class PublishPostQueue {
   readonly nextAvailableStmt;
   readonly rescheduleStmt;
   readonly deleteStmt;
+  readonly clearStmt;
+  readonly statusStmt;
+  readonly resetStmt;
 
   constructor(dbPath: string) {
     const directory = path.dirname(dbPath);
@@ -42,7 +45,7 @@ export class PublishPostQueue {
     }
 
     this.db = new Database(dbPath, { create: true });
-    this.db.exec(`PRAGMA journal_mode = WAL;`);
+    this.db.exec(`PRAGMA journal_mode = DELETE;`);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS publish_post_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,11 +77,11 @@ export class PublishPostQueue {
       `CREATE INDEX IF NOT EXISTS idx_publish_post_queue_status_available ON publish_post_queue(status, available_at);`
     );
 
-    const resetStmt = this.db.prepare(
+    this.resetStmt = this.db.prepare(
       `UPDATE publish_post_queue SET status='pending', available_at=?, updated_at=? WHERE status='processing'`
     );
     const now = Date.now();
-    resetStmt.run(now, now);
+    this.resetStmt.run(now, now);
 
     this.insertStmt = this.db.prepare(
       `INSERT INTO publish_post_queue (requester_id, tweet_url, user_text, status, available_at, created_at, updated_at, retry_count, last_delay_ms)
@@ -102,10 +105,23 @@ export class PublishPostQueue {
     );
 
     this.rescheduleStmt = this.db.prepare(
-      `UPDATE publish_post_queue SET status='pending', available_at=$availableAt, updated_at=$updatedAt WHERE id=$id`
+      `UPDATE publish_post_queue 
+       SET status='pending', available_at=$availableAt, updated_at=$updatedAt, retry_count=retry_count+1, last_delay_ms=$delayMs 
+       WHERE id=$id`
     );
 
     this.deleteStmt = this.db.prepare(`DELETE FROM publish_post_queue WHERE id=$id`);
+    this.clearStmt = this.db.prepare(`DELETE FROM publish_post_queue WHERE status IN ('pending', 'processing')`);
+    this.statusStmt = this.db.prepare(`
+      SELECT 
+        status,
+        COUNT(*) as count,
+        MIN(available_at) as earliest_available,
+        MAX(retry_count) as max_retries
+      FROM publish_post_queue 
+      WHERE status IN ('pending', 'processing')
+      GROUP BY status
+    `);
   }
 
   enqueue(command: PublishPostCommand, availableAt: number = Date.now(), retryCount: number = 0, lastDelayMs: number = 0) {
@@ -154,12 +170,7 @@ export class PublishPostQueue {
 
   reschedule(id: number, retryAt: number, delayMs: number = 0) {
     // Update available_at and last_delay_ms
-    const updateStmt = this.db.prepare(
-      `UPDATE publish_post_queue 
-       SET status='pending', available_at=$availableAt, updated_at=$updatedAt, retry_count=retry_count+1, last_delay_ms=$delayMs 
-       WHERE id=$id`
-    );
-    updateStmt.run({ $id: id, $availableAt: retryAt, $updatedAt: Date.now(), $delayMs: delayMs });
+    this.rescheduleStmt.run({ $id: id, $availableAt: retryAt, $updatedAt: Date.now(), $delayMs: delayMs });
   }
 
   complete(id: number) {
@@ -171,22 +182,27 @@ export class PublishPostQueue {
   }
 
   clearQueue() {
-    const clearStmt = this.db.prepare(`DELETE FROM publish_post_queue WHERE status IN ('pending', 'processing')`);
-    const result = clearStmt.run();
+    const result = this.clearStmt.run();
     return result.changes;
   }
 
   getQueueStatus() {
-    const statusStmt = this.db.prepare(`
-      SELECT 
-        status,
-        COUNT(*) as count,
-        MIN(available_at) as earliest_available,
-        MAX(retry_count) as max_retries
-      FROM publish_post_queue 
-      WHERE status IN ('pending', 'processing')
-      GROUP BY status
-    `);
-    return statusStmt.all();
+    return this.statusStmt.all();
+  }
+
+  close() {
+    this.insertStmt.finalize();
+    this.reserveStmt.finalize();
+    this.markProcessingStmt.finalize();
+    this.nextAvailableStmt.finalize();
+    this.rescheduleStmt.finalize();
+    this.deleteStmt.finalize();
+    this.clearStmt.finalize();
+    this.statusStmt.finalize();
+    this.resetStmt.finalize();
+    this.db.close();
+    try {
+      unlinkSync(this.db.filename);
+    } catch {}
   }
 }
