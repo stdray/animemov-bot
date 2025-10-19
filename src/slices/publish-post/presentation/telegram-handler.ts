@@ -8,6 +8,8 @@ import { TWEET_QUOTE_MARKER } from "../domain/models";
 const tweetLinkRegex = /(https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[^\s]+)/i;
 const quoteTokenDetectionRegex = /(?:^|\s)(тви|twi)(?=\s|$)/iu;
 const quoteTokenRemovalRegex = /(?:^|\s)(тви|twi)(?=\s|$)/giu;
+const clearQueueRegex = /^\s*(clean\s+queue|очистить\s+очередь|очередь\s+очистить)\s*$/i;
+const queueStatusRegex = /^\s*(queue\s+status|статус\s+очереди|очередь\s+статус)\s*$/i;
 
 export const registerPublishPostHandler = (bot: Bot<Context>, useCase: PublishPostUseCase) => {
   const processPost = async (ctx: Context, text: string): Promise<void> => {
@@ -36,6 +38,33 @@ export const registerPublishPostHandler = (bot: Bot<Context>, useCase: PublishPo
 
   bot.on("message:text", async (ctx) => {
     const text = ctx.message?.text ?? "";
+    
+    // Check for clear queue command
+    if (clearQueueRegex.test(text)) {
+      try {
+        const requesterId = ctx.from?.id ?? 0;
+        await ctx.reply("🗑️ Очищаю очередь...", { reply_to_message_id: ctx.message?.message_id });
+        await useCase.clearQueue(requesterId);
+      } catch (error) {
+        logger.error("Ошибка при очистке очереди", { error });
+        await ctx.reply("❌ Произошла ошибка при очистке очереди", { reply_to_message_id: ctx.message?.message_id });
+      }
+      return;
+    }
+
+    // Check for queue status command
+    if (queueStatusRegex.test(text)) {
+      try {
+        const requesterId = ctx.from?.id ?? 0;
+        await useCase.getQueueStatus(requesterId);
+      } catch (error) {
+        logger.error("Ошибка при получении статуса очереди", { error });
+        await ctx.reply("❌ Произошла ошибка при получении статуса очереди", { reply_to_message_id: ctx.message?.message_id });
+      }
+      return;
+    }
+
+    // Check for tweet links
     if (!tweetLinkRegex.test(text)) {
       await ctx.reply(`Текущая версия: ${env.appVersion}`, { reply_to_message_id: ctx.message?.message_id });
       return;

@@ -58,6 +58,43 @@ export class TelegramUserNotifier implements PublishPostNotifier {
     await this.safeSendMessage(requesterId, text.join("\n"), "MarkdownV2");
   }
 
+  async notifyRetry(requesterId: number, currentRetry: number, maxRetries: number, retryAt: number): Promise<void> {
+    const formattedTime = moscowFormatter.format(new Date(retryAt));
+    const text = [
+      `🔄 Повторная попытка ${currentRetry}/${maxRetries}.`,
+      `Следующая попытка будет выполнена после ${formattedTime} (МСК).`
+    ].join("\\n");
+
+    await this.safeSendMessage(requesterId, text);
+  }
+
+  async notifyQueueCleared(requesterId: number, clearedCount: number): Promise<void> {
+    const text = `🗑️ Очередь очищена. Удалено заданий: ${clearedCount}`;
+    await this.safeSendMessage(requesterId, text);
+  }
+
+  async notifyQueueStatus(requesterId: number, status: any[]): Promise<void> {
+    if (status.length === 0) {
+      await this.safeSendMessage(requesterId, "📊 Очередь пуста");
+      return;
+    }
+
+    const lines: string[] = ["📊 Статус очереди:"];
+    
+    for (const item of status) {
+      const earliestDate = item.earliest_available 
+        ? moscowFormatter.format(new Date(item.earliest_available))
+        : 'N/A';
+      
+      lines.push(`${item.status}: ${item.count} заданий (макс. попыток: ${item.max_retries || 0})`);
+      if (item.earliest_available) {
+        lines.push(`  следующее: ${earliestDate} (МСК)`);
+      }
+    }
+
+    await this.safeSendMessage(requesterId, lines.join("\\n"));
+  }
+
   private async safeSendMessage(requesterId: number, text: string, parseMode?: "MarkdownV2"): Promise<void> {
     if (!requesterId) {
       return;
