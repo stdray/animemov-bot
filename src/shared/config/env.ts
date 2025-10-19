@@ -49,5 +49,6 @@ export const env = {
   twitterProxyUrl: requireEnv("TWITTER_PROXY_URL"),
   tempDir,
   queueDbPath: defaultQueueDbPath,
-  appVersion: appVersionValue
+  appVersion: appVersionValue,
+  maxRetryCount: parseInt(process.env["MAX_RETRY_COUNT"] ?? "5", 10)
 };

@@ -5,6 +5,7 @@ import {InvalidTweetUrlError, TwitterRateLimitError} from "../domain/errors";
 import {TwitterMediaDownloader} from "../infrastructure/twitter-media-downloader";
 import {TelegramChannelPublisher} from "../infrastructure/telegram-channel-publisher";
 import {PublishPostQueue, QueueJob} from "../infrastructure/publish-post-queue";
+import {env} from "../../../shared/config/env";
 
 type TimerHandle = ReturnType<typeof setTimeout>;
 
@@ -52,6 +53,35 @@ export class PublishPostUseCase {
         reject(error);
       }
     });
+  }
+
+  async clearQueue(requesterId: number) {
+    try {
+      const clearedCount = this.queue.clearQueue();
+      logger.info("Очередь очищена", {requesterId, clearedJobs: clearedCount});
+      
+      // Clear all pending resolvers
+      this.pendingResolvers.clear();
+      
+      // Notify user about cleared queue
+      await this.userNotifier.notifyQueueCleared(requesterId, clearedCount);
+      
+      return clearedCount;
+    } catch (error) {
+      logger.error("Ошибка при очистке очереди", {requesterId, error});
+      throw error;
+    }
+  }
+
+  async getQueueStatus(requesterId: number) {
+    try {
+      const status = this.queue.getQueueStatus();
+      await this.userNotifier.notifyQueueStatus(requesterId, status);
+      return status;
+    } catch (error) {
+      logger.error("Ошибка при получении статуса очереди", {requesterId, error});
+      throw error;
+    }
   }
 
   validate(command: PublishPostCommand) {
@@ -111,17 +141,48 @@ export class PublishPostUseCase {
       this.resolveJob(job.id);
     } catch (error) {
       if (error instanceof TwitterRateLimitError) {
-        this.queue.reschedule(job.id, error.retryAt);
+        const delayMs = error.retryAt - Date.now();
+        this.queue.reschedule(job.id, error.retryAt, delayMs);
         this.scheduleWake(error.retryAt);
         logger.warn("Задача отложена из-за rate limit", {
           jobId: job.id,
-          retryAt: error.retryAt
+          retryAt: error.retryAt,
+          delayMs: delayMs
         });
         await this.notifyRateLimit(job.requesterId, error.retryAt, error.message);
         return;
       }
 
-      logger.error("Ошибка обработки задачи публикации", {jobId: job.id, error});
+      // Check if we should retry the job based on retry count
+      const currentRetries = job.retryCount || 0;
+      if (currentRetries < env.maxRetryCount) {
+        // Calculate new delay: last delay + 10 seconds
+        const lastDelayMs = job.lastDelayMs || 0;
+        const newDelayMs = lastDelayMs + 10000; // Add 10 seconds
+        const retryAt = Date.now() + newDelayMs;
+        
+        this.queue.reschedule(job.id, retryAt, newDelayMs);
+        this.scheduleWake(retryAt);
+        
+        logger.warn("Задача отложена для повторной попытки", {
+          jobId: job.id,
+          retryCount: currentRetries + 1,
+          maxRetries: env.maxRetryCount,
+          retryAt: retryAt,
+          delayMs: newDelayMs,
+          error: error
+        });
+        
+        await this.userNotifier.notifyRetry(job.requesterId, currentRetries + 1, env.maxRetryCount, retryAt);
+        return;
+      }
+
+      logger.error("Ошибка обработки задачи публикации (исчерпаны попытки)", {
+        jobId: job.id,
+        retryCount: currentRetries,
+        maxRetries: env.maxRetryCount,
+        error
+      });
       this.queue.fail(job.id);
       this.rejectJob(job.id, error);
     }
@@ -250,4 +311,10 @@ export interface PublishPostNotifier {
   notifyRateLimit(requesterId: number, retryAt: number, message: string): Promise<void>;
 
   notifyVideoVariants(requesterId: number, variants: VideoVariantsInfo[]): Promise<void>;
+
+  notifyRetry(requesterId: number, currentRetry: number, maxRetries: number, retryAt: number): Promise<void>;
+
+  notifyQueueCleared(requesterId: number, clearedCount: number): Promise<void>;
+
+  notifyQueueStatus(requesterId: number, status: any[]): Promise<void>;
 }
