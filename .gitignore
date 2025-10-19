@@ -282,3 +282,7 @@ dist
 
 # Temp storage for загружаемых файлов
 .tmp/
+.tmp-test/
+
+# Test databases
+test-queue-*.sqlite*

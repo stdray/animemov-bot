@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "bun run src/app/main.ts",
     "build": "bun build src/app/main.ts --target bun --outdir dist",
-    "start": "bun run src/app/main.ts"
+    "start": "bun run src/app/main.ts",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
